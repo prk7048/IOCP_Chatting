@@ -66,7 +66,6 @@ ChatClient/
 docs/
   protocol.md
   test-scenario.md
-  sample-screenshot.svg
 ```
 
 ## 프로토콜 요약
@@ -140,12 +139,6 @@ hello from bob
 4. 두 클라이언트가 같은 방 메시지를 함께 받는지 확인합니다.
 5. 클라이언트 B에서 `/leave`를 입력합니다.
 6. 한 클라이언트를 종료하고 서버 로그에서 접속 종료 및 방 정리를 확인합니다.
-
-## 예시 화면
-
-벡터 예시 파일:
-
-- [docs/sample-screenshot.svg](./docs/sample-screenshot.svg)
 
 ## 설계 메모
 
