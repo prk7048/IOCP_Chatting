@@ -1,44 +1,55 @@
 # Windows IOCP Chat Server
 
-게임서버 기본기 검증용으로 만든 최소 범위의 Windows IOCP 기반 TCP 채팅서버입니다.
+Minimal Windows IOCP-based TCP chat server for validating core game server fundamentals.
 
-## 구현 범위
+## Overview
+
+This project intentionally stays small and focused:
 
 - C++
 - TCP
-- 길이 헤더 기반 패킷
-- 멀티 클라이언트 접속
-- 닉네임 설정
-- 채팅방 생성 / 입장 / 퇴장
-- 방 안 브로드캐스트
-- 접속 종료 처리
-- 서버 로그
-- README
-- 테스트용 콘솔 클라이언트
+- length-header packet protocol
+- multi-client connections
+- nickname setup
+- room create / join / leave
+- room broadcast
+- disconnect cleanup
+- server logging
+- simple console test client
 
-다음 항목은 의도적으로 포함하지 않았습니다.
+The following are intentionally out of scope:
 
 - DB
 - Redis
-- GUI 클라이언트
-- 파일 전송
-- 귓속말 / 친구 / 차단 / 이모지
-- 재접속 복구
-- TLS / 암호화
-- 운영자 페이지
+- GUI client
+- file transfer
+- whisper / friends / block / emoji
+- reconnect recovery
+- TLS / encryption
+- admin page
 
-## 핵심 구조
+## Core Structure
 
 - `Session`
-  - 클라이언트 소켓, IOCP recv/send, 닉네임, 현재 방 상태를 관리합니다.
+  - Owns a client socket, async recv/send state, nickname, and current room state.
 - `Room`
-  - 같은 방의 세션 목록을 보관하고 브로드캐스트 대상 스냅샷을 제공합니다.
+  - Tracks room members and provides a snapshot for room broadcasts.
 - `PacketParser`
-  - TCP 스트림을 누적 버퍼로 받아 길이 헤더 기준으로 완전한 패킷을 분리합니다.
+  - Accumulates TCP stream bytes and splits complete packets by length header.
 - `Server`
-  - IOCP, `AcceptEx`, 세션/방 맵, 패킷 디스패치와 종료 정리를 담당합니다.
+  - Owns IOCP, `AcceptEx`, session/room maps, packet dispatch, and disconnect cleanup.
 
-## 프로젝트 구조
+## Packet Flow
+
+```text
+recv
+-> append to buffer
+-> complete packet
+-> dispatch
+-> room broadcast
+```
+
+## Project Layout
 
 ```text
 IocpChatServer.sln
@@ -55,38 +66,44 @@ ChatClient/
 docs/
   protocol.md
   test-scenario.md
+  sample-screenshot.png
   sample-screenshot.svg
 ```
 
-## 프로토콜 요약
+## Protocol Summary
 
-자세한 표는 [docs/protocol.md](./docs/protocol.md)에 정리되어 있습니다.
+Full details are in [docs/protocol.md](./docs/protocol.md).
 
-- 헤더 구조: `uint16 packetSize + uint16 packetType`
-- 문자열 필드: `uint16 length + bytes`
-- 처리 흐름: `recv -> 누적 -> 패킷 완성 -> 디스패치 -> 룸 브로드캐스트`
+- header: `uint16 packetSize + uint16 packetType`
+- string field: `uint16 length + bytes`
+- max packet size: `4096`
 
-## 빌드
+## Build
 
-1. Visual Studio 2022에서 [IocpChatServer.sln](./IocpChatServer.sln)을 엽니다.
-2. `x64 / Debug` 또는 `x64 / Release`로 빌드합니다.
-3. `ChatServer`를 먼저 실행하고, 그 다음 `ChatClient`를 여러 개 실행합니다.
+1. Open [IocpChatServer.sln](./IocpChatServer.sln) in Visual Studio 2022.
+2. Select `x64 / Debug` or `x64 / Release`.
+3. Build the solution.
 
-## 실행 예시
+Built binaries are generated under:
 
-서버:
+- `x64/Debug/ChatServer/ChatServer.exe`
+- `x64/Debug/ChatClient/ChatClient.exe`
+
+## Run
+
+Server:
 
 ```powershell
-ChatServer.exe 7777
+.\x64\Debug\ChatServer\ChatServer.exe 7777
 ```
 
-클라이언트:
+Client:
 
 ```powershell
-ChatClient.exe 127.0.0.1 7777
+.\x64\Debug\ChatClient\ChatClient.exe 127.0.0.1 7777
 ```
 
-클라이언트 명령어:
+Client commands:
 
 ```text
 /nick Alice
@@ -96,28 +113,47 @@ ChatClient.exe 127.0.0.1 7777
 /quit
 ```
 
-명령어가 아니면 일반 채팅으로 전송됩니다.
+Any non-command input is sent as a chat message.
 
-## 테스트 시나리오
+## Manual Test
 
-1. 클라이언트 A 접속 후 `/nick Alice`
-2. 클라이언트 A가 `/create Lobby`
-3. 클라이언트 B 접속 후 `/nick Bob`
-4. 클라이언트 B가 `/join Lobby`
-5. A, B가 일반 문자열을 입력해 방 브로드캐스트 확인
-6. B가 `/leave`
-7. A 또는 B를 종료해 접속 종료 로그와 방 정리 확인
+Detailed steps are in [docs/test-scenario.md](./docs/test-scenario.md).
 
-상세 절차는 [docs/test-scenario.md](./docs/test-scenario.md)를 참고하면 됩니다.
+Quick test:
 
-예시 스크린샷 산출물은 [docs/sample-screenshot.svg](./docs/sample-screenshot.svg)에 포함했습니다.
+1. Run the server.
+2. Run client A and enter:
 
-## 고민했던 점
+```text
+/nick Alice
+/create Lobby
+hello from alice
+```
 
-- TCP는 스트림이므로 패킷 경계가 없어서 `PacketParser`가 누적 버퍼를 기준으로 길이 헤더를 해석합니다.
-- 세션 종료 시 `Server::HandleSessionClosed`에서 현재 방을 빠져나오게 하여 룸 멤버십이 남지 않도록 정리합니다.
-- 룸 단위 브로드캐스트는 `Room`이 멤버 스냅샷만 제공하고, 실제 패킷 생성과 전송은 `Server`에서 분리해 책임을 나눴습니다.
+3. Run client B and enter:
 
-## 검증 메모
+```text
+/nick Bob
+/join Lobby
+hello from bob
+```
 
-현재 이 작업 환경에는 Visual Studio / MSVC 빌드 도구가 PATH에 잡혀 있지 않아 실제 컴파일은 여기서 수행하지 못했습니다. 대신 바로 열어서 빌드 가능한 솔루션과 수동 검증용 콘솔 클라이언트, 테스트 시나리오, 예시 스크린샷 파일까지 함께 포함했습니다.
+4. Confirm both clients receive room messages.
+5. Enter `/leave` on client B.
+6. Close one client and confirm server disconnect cleanup logs.
+
+## Sample Screenshot
+
+PNG:
+
+![Sample console screenshot](./docs/sample-screenshot.png)
+
+Vector version:
+
+- [docs/sample-screenshot.svg](./docs/sample-screenshot.svg)
+
+## Design Notes
+
+- TCP is a byte stream, so packet boundaries must be reconstructed from the length header.
+- On disconnect, the session is removed from its room so stale room membership does not remain.
+- Room membership and packet broadcasting are separated to keep responsibilities clear.
